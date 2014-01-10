@@ -202,7 +202,7 @@ fi
 
 # Initialize path to temporary files
 today=$(date +"%Y%m%d_%H%M")
-fld=$(basename "$FILE_INPUT_PDF" | sed 's/[.][^.]*//')
+fld=$(basename "$FILE_INPUT_PDF" | sed 's/[.][^.]*$//')
 TMP_FLD="${TMP}/$today.filename.$fld"
 FILE_TMP="${TMP_FLD}/tmp.txt"						# temporary file with a very short lifetime (may be used for several things)
 FILE_PAGES_INFO="${TMP_FLD}/pages-info.txt"				# for each page: page #; width in pt; height in pt
