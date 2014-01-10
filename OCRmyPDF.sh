@@ -129,6 +129,7 @@ FILE_INPUT_PDF="`absolutePath "$1"`"
 	&& echo "The folder in which the output file should be generated does not exist. Exiting..." && exit $EXIT_BAD_ARGS
 FILE_OUTPUT_PDFA="`absolutePath "$2"`"
 
+[ -e "$2" ] && echo "The output file already exists. Exiting..." && exit 0
 
 
 # set script path as working directory
