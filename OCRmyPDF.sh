@@ -24,7 +24,7 @@ tesseract engine)
 Copyright: fritz-hh  from Github (https://github.com/fritz-hh)
 Version: $VERSION
 
-Usage: OCRmyPDF.sh  [-h] [-v] [-g] [-k] [-d] [-c] [-i] [-o dpi] [-f] [-l language] [-C filename] inputfile outputfile
+Usage: OCRmyPDF.sh  [-h] [-v] [-g] [-k] [-d] [-c] [-i] [-o dpi] [-f] [-l language] [-j jobs] [-C filename] inputfile outputfile
 
 -h : Display this help message
 -v : Increase the verbosity (this option can be used more than once) (e.g. -vvv)
@@ -45,6 +45,7 @@ Usage: OCRmyPDF.sh  [-h] [-v] [-g] [-k] [-d] [-c] [-i] [-o dpi] [-f] [-l languag
      (which should not be the case for PDF files built from scnanned images) 
 -l : Set the language of the PDF file in order to improve OCR results (default "eng")
      Any language supported by tesseract is supported.
+-j : Maximum number of parallel tasks to run.
 -C : Pass an additional configuration file to the tesseract OCR engine.
      (this option can be used more than once)
      Note 1: The configuration file must be available in the "tessdata/configs" folder of your tesseract installation
@@ -85,9 +86,10 @@ OVERSAMPLING_DPI="0"		# 0=do not perform oversampling (dpi value under which ove
 PDF_NOIMG="0"			# 0=no, 1=yes (generates each PDF page twice, with and without image)
 FORCE_OCR="0"			# 0=do not force, 1=force (force to OCR the whole document, even if some page already contain font data)
 TESS_CFG_FILES=""		# list of additional configuration files to be used by tesseract
+JOBS=""
 
 # Parse optional command line arguments
-while getopts ":hvgkdcio:fl:C:" opt; do
+while getopts ":hvgkdcio:fl:j:C:" opt; do
 	case $opt in
 		h) usage ; exit 0 ;;
 		v) VERBOSITY=$(($VERBOSITY+1)) ;;
@@ -99,6 +101,7 @@ while getopts ":hvgkdcio:fl:C:" opt; do
 		o) OVERSAMPLING_DPI="$OPTARG" ;;
 		f) FORCE_OCR="1" ;;
 		l) LAN="$OPTARG" ;;
+		j) JOBS="-j $OPTARG" ;;
 		C) TESS_CFG_FILES="$OPTARG $TESS_CFG_FILES" ;;
 		\?)
 			echo "Invalid option: -$OPTARG"
@@ -212,8 +215,6 @@ rm -r -f "${TMP_FLD}"
 mkdir -p "${TMP_FLD}"
 
 
-
-
 # get the size of each pdf page (width / height) in pt (inch*72)
 [ $VERBOSITY -ge $LOG_DEBUG ] && echo "Input file: Extracting size of each page (in pt)"
 ! identify -format "%w %h\n" "$FILE_INPUT_PDF" > "$FILE_TMP" \
@@ -223,7 +224,7 @@ sed '/^$/d' "$FILE_TMP" | awk '{printf "%04d %s\n", NR, $0}' > "$FILE_PAGES_INFO
 numpages=`tail -n 1 "$FILE_PAGES_INFO" | cut -f1 -d" "`
 
 # process each page of the input pdf file
-parallel -q -k --halt-on-error 1 "$OCR_PAGE" "$FILE_INPUT_PDF" "{}" "$numpages" "$TMP_FLD" \
+parallel $JOBS -q -k --halt-on-error 1 "$OCR_PAGE" "$FILE_INPUT_PDF" "{}" "$numpages" "$TMP_FLD" \
 	"$VERBOSITY" "$LAN" "$KEEP_TMP" "$PREPROCESS_DESKEW" "$PREPROCESS_CLEAN" "$PREPROCESS_CLEANTOPDF" "$OVERSAMPLING_DPI" \
 	"$PDF_NOIMG" "$TESS_CFG_FILES" "$FORCE_OCR" < "$FILE_PAGES_INFO"
 ret_code="$?"
