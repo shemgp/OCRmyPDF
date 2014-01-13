@@ -164,6 +164,10 @@ if [ $VERBOSITY -ge $LOG_WARN -a $((`echo ${tessversion} | sed s/[^0-9]//g`-3020
 fi
 
 
+# ensure pdftoppm is provided by poppler-utils, not the older xpdf version
+! pdftoppm -v 2>&1 | grep -q 'Poppler' && echo "Please remove xpdf and install poppler-utils. Exiting..." && $EXIT_MISSING_DEPENDENCY
+
+
 # Display the version of the tools if log level is LOG_DEBUG
 if [ $VERBOSITY -ge $LOG_DEBUG ]; then
 	echo "--------------------------------"
