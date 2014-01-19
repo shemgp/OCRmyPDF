@@ -109,7 +109,7 @@ class Leptonica(object):
         # Get data from tmpfile (in with block to ensure it is closed)
         with self.tmpfile as tmpfile:
             tmpfile.seek(0)
-            leptonica_output = unicode(tmpfile.read())
+            leptonica_output = tmpfile.read().decode(errors='replace')
 
         # If there are Python errors, let them bubble up
         if type:
