@@ -77,6 +77,8 @@ lept.pixWriteImpliedFormat.argtypes = [C.c_char_p, PIX, C.c_int32, C.c_int32]
 lept.pixWriteImpliedFormat.restype = C.c_int32
 lept.pixDestroy.argtypes = [C.POINTER(PIX)]
 lept.pixDestroy.restype = None
+lept.getLeptonicaVersion.argtypes = []
+lept.getLeptonicaVersion.restype = C.c_char_p
 
 
 class Leptonica(object):
@@ -185,6 +187,17 @@ def pixDestroy(pix):
         lept.pixDestroy(C.byref(pix))
 
 
+def getLeptonicaVersion():
+    """Get Leptonica version string.
+
+    Caveat: Leptonica expects the caller to free this memory.  We don't,
+    since that would involve binding to libc to access libc.free(),
+    a pointless effort to reclaim 100 bytes of memory.
+
+    """
+    return lept.getLeptonicaVersion().decode()
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description="Deskew images with Leptonica")
@@ -194,6 +207,9 @@ if __name__ == '__main__':
     parser.add_argument('outfile', help='deskewed output image')
 
     args = parser.parse_args()
+
+    if getLeptonicaVersion() != u'leptonica-1.69':
+        print("Unexpected leptonica version: %s" % getLeptonicaVersion())
 
     try:
         pix_source = pixRead(args.infile)
