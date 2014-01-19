@@ -1,8 +1,8 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
-##############################################################################
+#
 # © 2013-14: jbarlow83 from Github (https://github.com/jbarlow83)
-##############################################################################
+#
 #
 # Use Leptonica to detect find and remove page skew.  Leptonica uses the method
 # of differential square sums, which its author claim is faster and more robust
@@ -33,6 +33,7 @@ except Exception:
 
 
 class _PIXCOLORMAP(C.Structure):
+
     """struct PixColormap from Leptonica src/pix.h
     """
     _fields_ = [
@@ -44,6 +45,7 @@ class _PIXCOLORMAP(C.Structure):
 
 
 class _PIX(C.Structure):
+
     """struct Pix from Leptonica src/pix.h
     """
     _fields_ = [
@@ -86,7 +88,7 @@ def pixRead(filename):
     fails then the object will wrap a C null pointer.
 
     """
-    return lept.pixRead(filename)
+    return lept.pixRead(filename.encode(sys.getfilesystemencoding()))
 
 
 def pixScale(pix, scalex, scaley):
@@ -111,8 +113,9 @@ def pixWriteImpliedFormat(filename, pix, jpeg_quality=0, jpeg_progressive=0):
     jpeg_ progressive -- (iff JPEG; 0 for baseline seq., 1 for progressive)
 
     """
-    result = lept.pixWriteImpliedFormat(filename, pix, jpeg_quality,
-                                        jpeg_progressive)
+    result = lept.pixWriteImpliedFormat(
+        filename.encode(sys.getfilesystemencoding()),
+        pix, jpeg_quality, jpeg_progressive)
     if result != 0:
         # There is no programmatic way to get the cause of the error, but
         # Leptonica will write it to stdout/stderr
@@ -131,9 +134,10 @@ def pixDestroy(pix):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Deskew images with Leptonica")
-    parser.add_argument('-r', '--dpi', dest='dpi', action='store_const',
-                        const=300, help='input image resolution')
+    parser = argparse.ArgumentParser(
+        description="Deskew images with Leptonica")
+    parser.add_argument('-r', '--dpi', dest='dpi', action='store',
+                        type=int, default=300, help='input image resolution')
     parser.add_argument('infile', help='image to deskew')
     parser.add_argument('outfile', help='deskewed output image')
 
