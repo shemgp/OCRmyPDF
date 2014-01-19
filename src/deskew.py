@@ -12,30 +12,32 @@ from __future__ import print_function, absolute_import, division
 import argparse
 import ctypes as C
 import sys
+import os
+from tempfile import TemporaryFile
 
 
 def stderr(*objs):
     """Python 2/3 compatible print to stderr.
     """
-    print(*objs, file=sys.stderr)
+    print("deskew.py:", *objs, file=sys.stderr)
 
 
 from ctypes.util import find_library
 lept_lib = find_library('lept')
 if not lept_lib:
-    stderr("deskew.py: Could not find the Leptonica library")
+    stderr("Could not find the Leptonica library")
     sys.exit(3)
 try:
     lept = C.cdll.LoadLibrary(lept_lib)
 except Exception:
-    stderr("deskew.py: Could not load the Leptonica library from %s", lept_lib)
+    stderr("Could not load the Leptonica library from %s", lept_lib)
     sys.exit(3)
 
 
 class _PIXCOLORMAP(C.Structure):
-
     """struct PixColormap from Leptonica src/pix.h
     """
+
     _fields_ = [
         ("array", C.c_void_p),
         ("depth", C.c_int32),
@@ -45,9 +47,9 @@ class _PIXCOLORMAP(C.Structure):
 
 
 class _PIX(C.Structure):
-
     """struct Pix from Leptonica src/pix.h
     """
+
     _fields_ = [
         ("w", C.c_uint32),
         ("h", C.c_uint32),
@@ -77,7 +79,57 @@ lept.pixDestroy.argtypes = [C.POINTER(PIX)]
 lept.pixDestroy.restype = None
 
 
+class Leptonica(object):
+    """Context manager to trap errors reported by Leptonica.
+
+    Leptonica's error return codes are unreliable to the point of being
+    almost useless.  It does, however, write errors to stderr provided that is
+    not disabled at its compile time.  Fortunately this is done using error
+    macros so it is very self-consistent.
+
+    This context manager redirects stderr to a temporary file which is then
+    read and parsed for error messages.  As a side benefit, debug messages
+    from Leptonica are also suppressed.
+
+    """
+    def __enter__(self):
+        self.tmpfile = TemporaryFile()
+
+        # Save the old stderr, and redirect stderr to temporary file
+        self.old_stderr_fileno = os.dup(sys.stderr.fileno())
+        os.dup2(self.tmpfile.fileno(), sys.stderr.fileno())
+        return
+
+    def __exit__(self, type, value, traceback):
+        # Restore old stderr
+        os.dup2(self.old_stderr_fileno, sys.stderr.fileno())
+
+        # Get data from tmpfile (in with block to ensure it is closed)
+        with self.tmpfile as tmpfile:
+            tmpfile.seek(0)
+            leptonica_output = unicode(tmpfile.read())
+
+        # If there are Python errors, let them bubble up
+        if type:
+            stderr(leptonica_output)
+            return False
+
+        # If there are Leptonica errors, wrap them in Python excpetions
+        if 'Error' in leptonica_output:
+            if 'image file not found' in leptonica_output:
+                raise LeptonicaIOError()
+            if 'pixWrite: stream not opened' in leptonica_output:
+                raise LeptonicaIOError()
+            raise LeptonicaError(leptonica_output)
+
+        return False
+
+
 class LeptonicaError(Exception):
+    pass
+
+
+class LeptonicaIOError(LeptonicaError):
     pass
 
 
@@ -88,12 +140,14 @@ def pixRead(filename):
     fails then the object will wrap a C null pointer.
 
     """
-    return lept.pixRead(filename.encode(sys.getfilesystemencoding()))
+    with Leptonica():
+        return lept.pixRead(filename.encode(sys.getfilesystemencoding()))
 
 
 def pixScale(pix, scalex, scaley):
     """Returns the pix object rescaled according to the proportions given."""
-    return lept.pixScale(pix, scalex, scaley)
+    with Leptonica():
+        return lept.pixScale(pix, scalex, scaley)
 
 
 def pixDeskew(pix, reduction_factor=0):
@@ -103,7 +157,8 @@ def pixDeskew(pix, reduction_factor=0):
         for skew angle
 
     """
-    return lept.pixDeskew(pix, reduction_factor)
+    with Leptonica():
+        return lept.pixDeskew(pix, reduction_factor)
 
 
 def pixWriteImpliedFormat(filename, pix, jpeg_quality=0, jpeg_progressive=0):
@@ -113,14 +168,10 @@ def pixWriteImpliedFormat(filename, pix, jpeg_quality=0, jpeg_progressive=0):
     jpeg_ progressive -- (iff JPEG; 0 for baseline seq., 1 for progressive)
 
     """
-    result = lept.pixWriteImpliedFormat(
-        filename.encode(sys.getfilesystemencoding()),
-        pix, jpeg_quality, jpeg_progressive)
-    if result != 0:
-        # There is no programmatic way to get the cause of the error, but
-        # Leptonica will write it to stdout/stderr
-        raise LeptonicaError("pixWriteImpliedFormat('%s', ...) returned error"
-                             % filename)
+    with Leptonica():
+        lept.pixWriteImpliedFormat(
+            filename.encode(sys.getfilesystemencoding()),
+            pix, jpeg_quality, jpeg_progressive)
 
 
 def pixDestroy(pix):
@@ -130,7 +181,8 @@ def pixDestroy(pix):
     the address of the pointer.
 
     """
-    lept.pixDestroy(C.byref(pix))
+    with Leptonica():
+        lept.pixDestroy(C.byref(pix))
 
 
 if __name__ == '__main__':
@@ -143,8 +195,9 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    pix_source = pixRead(args.infile)
-    if not pix_source:
+    try:
+        pix_source = pixRead(args.infile)
+    except LeptonicaIOError:
         stderr("Failed to open file: %s" % args.infile)
         sys.exit(2)
 
@@ -156,8 +209,8 @@ if __name__ == '__main__':
 
     try:
         pixWriteImpliedFormat(args.outfile, pix_deskewed)
-    except LeptonicaError as e:
-        stderr(e)
+    except LeptonicaIOError as e:
+        stderr("Failed to open destination file: %s" % args.outfile)
         sys.exit(5)
     pixDestroy(pix_source)
     pixDestroy(pix_deskewed)
