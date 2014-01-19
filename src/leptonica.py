@@ -19,7 +19,7 @@ from tempfile import TemporaryFile
 def stderr(*objs):
     """Python 2/3 compatible print to stderr.
     """
-    print("deskew.py:", *objs, file=sys.stderr)
+    print("leptonica.py:", *objs, file=sys.stderr)
 
 
 from ctypes.util import find_library
@@ -153,7 +153,10 @@ def pixScale(pix, scalex, scaley):
 
 
 def pixDeskew(pix, reduction_factor=0):
-    """Returns the deskewed pix object, or a clone of the original.
+    """Returns the deskewed pix object.
+
+    A clone of the original is returned when the algorithm cannot find a skew
+    angle with sufficient confidence.
 
     reduction_factor -- amount to downsample (0 for default) when searching
         for skew angle
@@ -198,19 +201,7 @@ def getLeptonicaVersion():
     return lept.getLeptonicaVersion().decode()
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        description="Deskew images with Leptonica")
-    parser.add_argument('-r', '--dpi', dest='dpi', action='store',
-                        type=int, default=300, help='input image resolution')
-    parser.add_argument('infile', help='image to deskew')
-    parser.add_argument('outfile', help='deskewed output image')
-
-    args = parser.parse_args()
-
-    if getLeptonicaVersion() != u'leptonica-1.69':
-        print("Unexpected leptonica version: %s" % getLeptonicaVersion())
-
+def deskew(args):
     try:
         pix_source = pixRead(args.infile)
     except LeptonicaIOError:
@@ -225,9 +216,31 @@ if __name__ == '__main__':
 
     try:
         pixWriteImpliedFormat(args.outfile, pix_deskewed)
-    except LeptonicaIOError as e:
+    except LeptonicaIOError:
         stderr("Failed to open destination file: %s" % args.outfile)
         sys.exit(5)
     pixDestroy(pix_source)
     pixDestroy(pix_deskewed)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        description="Python wrapper to access Leptonica")
+
+    subparsers = parser.add_subparsers(title='commands',
+                                       description='supported operations')
+
+    parser_deskew = subparsers.add_parser('deskew')
+    parser_deskew.add_argument('-r', '--dpi', dest='dpi', action='store',
+                               type=int, default=300, help='input resolution')
+    parser_deskew.add_argument('infile', help='image to deskew')
+    parser_deskew.add_argument('outfile', help='deskewed output image')
+    parser_deskew.set_defaults(func=deskew)
+
+    args = parser.parse_args()
+
+    if getLeptonicaVersion() != u'leptonica-1.69':
+        print("Unexpected leptonica version: %s" % getLeptonicaVersion())
+
+    args.func(args)
 
