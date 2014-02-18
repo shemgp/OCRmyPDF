@@ -103,11 +103,18 @@ lept.pixOtsuThreshOnBackgroundNorm.argtypes = [
     C.c_int32, C.c_int32, C.c_int32, C.c_int32, C.c_int32, C.c_int32, C.c_int32,
     C.c_float, C.POINTER(C.c_int32)]
 lept.pixOtsuThreshOnBackgroundNorm.restype = PIX
-
+lept.pixSobelEdgeFilter.argtypes = [PIX, C.c_int32]
+lept.pixSobelEdgeFilter.restype = PIX
+lept.pixInvert.argtypes = [PIX, PIX]
+lept.pixInvert.restype = PIX
+lept.pixUnsharpMasking.argtypes = [PIX, C.c_int32, C.c_float]
+lept.pixUnsharpMasking.restype = PIX
 
 # Resampling
 lept.pixScale.argtypes = [PIX, C.c_float, C.c_float]
 lept.pixScale.restype = PIX
+lept.pixBlockconv.argtypes = [PIX, C.c_int32, C.c_int32]
+lept.pixBlockconv.restype = PIX
 
 # Skew
 lept.pixDeskew.argtypes = [PIX, C.c_int32]
@@ -256,10 +263,46 @@ def pixOtsuThreshOnBackgroundNorm(pix_source, pix_mask=None, tile_size=(10, 15),
     return pix_out
 
 
+def pixSobelEdgeFilter(pix_source):
+    """Filter edges in input."""
+
+    with LeptonicaErrorTrap():
+        if pix_source.contents.d > 8:
+            pix_source = pixConvertTo8(pix_source)
+
+        return lept.pixSobelEdgeFilter(pix_source, C.c_int32(2))    # 2 == horiz+vert edges
+
+
+def pixInvert(pix):
+    """Returns a color-inverted copy of image."""
+
+    with LeptonicaErrorTrap():
+        return lept.pixInvert(None, pix)
+
+
+def pixUnsharpMasking(pix, half_width, fract):
+    """Unsharpen the image."""
+
+    wc = C.c_int32(half_width)
+    fract = C.c_float(fract)
+
+    with LeptonicaErrorTrap():
+        return lept.pixUnsharpMasking(pix, half_width, fract)
+
+
 def pixScale(pix, scalex, scaley):
     """Returns the pix object rescaled according to the proportions given."""
     with LeptonicaErrorTrap():
         return lept.pixScale(pix, scalex, scaley)
+
+
+def pixBlockconv(pix, half_width, half_height):
+    """Return pix object convoluted by a kernel specified by input dimensions."""
+
+    wc, hc = C.c_int32(half_width), C.c_int32(half_height)
+
+    with LeptonicaErrorTrap():
+        return lept.pixBlockconv(pix, wc, hc)
 
 
 def pixDeskew(pix, reduction_factor=0):
@@ -476,6 +519,52 @@ def orient(args):
         sys.exit(5)
 
 
+def binarize(args):
+    """Binarize image."""
+    try:
+        pix = pixRead(args.infile)
+    except LeptonicaIOError:
+        stderr("Failed to open file: %s" % args.infile)
+        sys.exit(2)
+
+    pix1 = pixOtsuThreshOnBackgroundNorm(pix)
+
+    try:
+        pixWriteImpliedFormat(args.outfile, pix1)
+    except LeptonicaIOError:
+        stderr("Failed to open destination file: %s" % args.outfile)
+        sys.exit(5)
+
+
+def dot_matrix(args):
+    """Perform repair on dot matrix printed image."""
+    try:
+        pix = pixRead(args.infile)
+    except LeptonicaIOError:
+        stderr("Failed to open file: %s" % args.infile)
+        sys.exit(2)
+
+    # Detect edges (highlight the dots)
+    pix_edges = pixInvert(pixSobelEdgeFilter(pix))
+
+    # Threshold
+    pix1 = pixConvertTo1(pix_edges, 200)
+
+    # Blur the dots into each other
+    pix8 = pixConvertTo8(pix1)
+    pix_blur = pixBlockconv(pix8, half_width=3, half_height=2)
+
+    # Sharpen
+    pix_unsharp = pixUnsharpMasking(pix_blur, half_width=9, fract=0.8)
+    pix_out = pixConvertTo1(pix_unsharp, 160)
+
+    try:
+        pixWriteImpliedFormat(args.outfile, pix_out)
+    except LeptonicaIOError:
+        stderr("Failed to open destination file: %s" % args.outfile)
+        sys.exit(5)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Python wrapper to access Leptonica")
@@ -508,6 +597,26 @@ def main():
                                help="also check if image may be mirrored",
                                action='store_true')
     parser_orient.set_defaults(func=orient)
+
+    # leptonica.py binarize
+    parser_binarize = subparsers.add_parser('binarize',
+                                            help='convert image to black/white')
+    parser_binarize.add_argument('infile',
+                                 help="file to binarize")
+    parser_binarize.add_argument('outfile',
+                                 nargs='?', default=None,
+                                 help="output file")
+    parser_binarize.set_defaults(func=binarize)
+
+    # leptonica.py dotmatrix
+    parser_dotmatrix = subparsers.add_parser('dotmatrix',
+                                             help="connect dots in dot matrix scans")
+    parser_dotmatrix.add_argument('infile',
+                                  help="file to process")
+    parser_dotmatrix.add_argument('outfile',
+                                  nargs='?', default=None,
+                                  help="output file")
+    parser_dotmatrix.set_defaults(func=dot_matrix)
 
     args = parser.parse_args()
 
