@@ -220,8 +220,31 @@ def pixRead(filename):
     fails then the object will wrap a C null pointer.
 
     """
-    with LeptonicaErrorTrap():
-        return lept.pixRead(filename.encode(sys.getfilesystemencoding()))
+
+    from PIL import Image
+    im = Image.open(filename)
+    if im.format == 'PPM':
+        # Leptonica's PNM reader is buggy.  If the first pixel looks like a CR or LF,
+        # it will get consumed instead of read as image data.
+        from tempfile import NamedTemporaryFile
+
+        if im.mode == '1' or im.mode == 'L':
+            with NamedTemporaryFile(delete=True, suffix=".tif") as tmpfile:
+                im.save(tmpfile.name)
+                with LeptonicaErrorTrap():
+                    return lept.pixRead(tmpfile.name.encode(sys.getfilesystemencoding()))
+        elif im.mode == 'RGB':
+            with NamedTemporaryFile(delete=True, suffix=".png") as tmpfile:
+                im.save(tmpfile.name)
+                with LeptonicaErrorTrap():
+                    return lept.pixRead(tmpfile.name.encode(sys.getfilesystemencoding()))
+        else:
+            raise NotImplementedError(
+                "Don't know what to do with %s (format %s)" % (filename, im.format))
+
+    else:
+        with LeptonicaErrorTrap():
+            return lept.pixRead(filename.encode(sys.getfilesystemencoding()))
 
 
 def pixConvertTo1(pix, threshold=130):
@@ -706,3 +729,17 @@ def test_orient():
             mirrored = rotated.transpose(Image.FLIP_LEFT_RIGHT)
             test_case = "{0}-{1}-LR".format(color, angle)
             _test_orient(mirrored, test_case)
+
+
+def test_pnm_crlf_bug():
+    from tempfile import NamedTemporaryFile
+
+    pnm_header = b"P5\x0A2 2\x0A255\x0A"
+    pnm_data = b"\x0A\x00\x0A\x0D"
+
+    with NamedTemporaryFile(prefix="test-pnm-crlf", suffix=".pgm", delete=True) as tmpfile:
+        tmpfile.write(pnm_header)
+        tmpfile.write(pnm_data)
+        tmpfile.flush()
+        with LeptonicaErrorTrap():
+            pixRead(tmpfile.name)
