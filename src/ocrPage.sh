@@ -123,7 +123,7 @@ ret_code="$?"
 # Handle pages that already contain a text layer
 if ([ "$ret_code" -eq "1" ] && [ "$SKIP_TEXT" -eq "1" ]); then
 	echo "Page $page: Skipping processing because page contains text..."
-	pdfseparate -f $page -l $page ${FILE_INPUT_PDF} $curOCRedPDF
+	pdfseparate -f $page -l $page "${FILE_INPUT_PDF}" "$curOCRedPDF"
 	exit 0
 elif ([ "$ret_code" -eq "1" ] && [ "$FORCE_OCR" -eq "0" ]); then
 	echo "Page $page: Exiting... (Use the -f option to force OCRing, even though fonts are available in the input file)" && exit $EXIT_BAD_INPUT_FILE
