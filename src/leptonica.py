@@ -560,7 +560,9 @@ def binarize(args):
 
 
 def dot_matrix(args):
-    """Perform repair on dot matrix printed image."""
+    """Perform repair on dot matrix printed image.
+    ImageMagick: convert '{}' -morphology Erode Rectangle:2x4 '_{}' seems more robust than this
+    """
     try:
         pix = pixRead(args.infile)
     except LeptonicaIOError:
@@ -575,7 +577,7 @@ def dot_matrix(args):
 
     # Blur the dots into each other
     pix8 = pixConvertTo8(pix1)
-    pix_blur = pixBlockconv(pix8, half_width=3, half_height=2)
+    pix_blur = pixBlockconv(pix8, half_width=2, half_height=3)
 
     # Sharpen
     pix_unsharp = pixUnsharpMasking(pix_blur, half_width=9, fract=0.8)
