@@ -492,9 +492,7 @@ hocr_template = '''<?xml version="1.0" encoding="UTF-8"?>
 </html>'''
 
 
-@active_if(ocr_required)
-@transform(select_ocr_image, suffix(".for_ocr.png"), ".hocr")
-def ocr_tesseract(
+def ocr_openocr(
         input_file,
         output_file):
     args_tesseract = [
@@ -536,7 +534,9 @@ def ocr_tesseract(
             print(line, end='')  # fileinput.input redirects stdout
 
 
-def ocr_tesseract_normal(
+@active_if(ocr_required)
+@transform(select_ocr_image, suffix(".for_ocr.png"), ".hocr")
+def ocr_tesseract(
         input_file,
         output_file):
 
