@@ -498,6 +498,48 @@ hocr_template = '''<?xml version="1.0" encoding="UTF-8"?>
 def ocr_tesseract(
         input_file,
         output_file):
+    args_tesseract = [
+        'sh',
+        '/Users/jb/Documents/src/open-ocr/docs/upload-local-file.sh',
+        'http://basalt:8080/ocr-file-upload',
+        input_file,
+        'image/png',
+    ]
+    p = Popen(args_tesseract, close_fds=True, stdout=PIPE, stderr=PIPE,
+              universal_newlines=True)
+    try:
+        stdout, stderr = p.communicate(timeout=180)
+    except TimeoutExpired:
+        p.kill()
+        stdout, stderr = p.communicate()
+        # Generate a HOCR file with no recognized text if tesseract times out
+        # Temporary workaround to hocrTransform not being able to function if
+        # it does not have a valid hOCR file.
+        with open(output_file, 'w', encoding="utf-8") as f:
+            f.write(hocr_template.format(pageinfo['width_pixels'],
+                                         pageinfo['height_pixels']))
+        return
+    if p.returncode != 0:
+        raise CalledProcessError(p.returncode, args_tesseract)
+    with open(output_file, 'w', encoding="utf-8") as f:
+        f.write(stdout)
+
+    # Tesseract inserts source filename into hocr file without escaping
+    # it. This could break the XML parser. Rewrite the hocr file,
+    # replacing the filename with a space.
+    regex_nested_single_quotes = re.compile(
+        r"""title='image "([^"]*)";""")
+    with fileinput.input(files=(output_file,), inplace=True) as f:
+        for line in f:
+            line = regex_nested_single_quotes.sub(
+                r"""title='image " ";""", line)
+            line = line.replace('(MISSING)', '')
+            print(line, end='')  # fileinput.input redirects stdout
+
+
+def ocr_tesseract_normal(
+        input_file,
+        output_file):
 
     args_tesseract = [
         'tesseract',
