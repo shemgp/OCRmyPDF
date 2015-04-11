@@ -275,13 +275,30 @@ FILE_VALIDATION_LOG="${TMP_FLD}/pdf_validation.log"			# log file containing the 
 sed '/^$/d' "$FILE_TMP" | awk '{printf "%04d %s\n", NR, $0}' > "$FILE_PAGES_INFO"
 numpages=`tail -n 1 "$FILE_PAGES_INFO" | cut -f1 -d" "`
 
+function delete_tmp {
+	rm -rf "$TMP_FLD"
+	exit $EXIT_OTHER_ERROR
+}
+if [ $KEEP_TMP -eq 0 ]; then
+	trap delete_tmp SIGHUP SIGTERM
+fi
+
+function sigint_notice {
+	echo "Intermediate files preserved at: ${TMP_FLD}"
+	exit $EXIT_OTHER_ERROR
+}
+trap sigint_notice SIGINT
+
 # process each page of the input pdf file
 parallel --gnu -q -k --halt-on-error 1 -j2 python3 -m src.ocrpage \
 	"$FILE_INPUT_PDF" "{}" "$numpages" "$TMP_FLD" \
 	"$VERBOSITY" "$LAN" "$KEEP_TMP" "$PREPROCESS_DESKEW" "$PREPROCESS_CLEAN" "$PREPROCESS_CLEANTOPDF" "$OVERSAMPLING_DPI" \
 	"$PDF_NOIMG" "$FORCE_OCR" "$SKIP_TEXT" "$SKIP_BIG" "$EXACT_IMAGE" "$TESS_CFG_FILES" < "$FILE_PAGES_INFO"
 ret_code="$?"
-[ $ret_code -ne 0 ] && exit $ret_code 
+if [ $ret_code -ne 0 ]; then
+	echo "Intermediate files preserved at: ${TMP_FLD}"
+	exit $ret_code
+fi
 
 # concatenate all pages and convert the pdf file to match PDF/A format
 [ $VERBOSITY -ge $LOG_DEBUG ] && echo "Output file: Concatenating all pages to the final PDF/A file" 
